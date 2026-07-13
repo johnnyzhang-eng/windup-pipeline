@@ -50,6 +50,39 @@ python3 -m http.server 8777
 
 ---
 
+## 怎么跑 · Run
+
+```bash
+pip install -r requirements.txt          # Pillow + rembg + onnxruntime
+export SUFY_KEY=你的图像API_key           # 生成步骤需要（OpenAI 兼容端点）
+
+python run.py --ref path/to/character.png --name mychar \
+  --desc "英文角色身份描述，如 pixel-art druid: red hair, green cloak, staff" \
+  --mode desc        # desc=动作描述驱动(长裙/复杂角色) | skeleton=骨架驱动(露腿角色)
+```
+
+产出在 `characters/mychar/`（01_base → 02_walk_raw → 03_walk_cutout → 04_output）。
+
+- **生成步骤**（视角规整、逐帧生成）需联网 + 有效 `SUFY_KEY`；
+- **抠图/对齐/打包**是本地纯 CV，无需联网、无需 key；
+- 首次跑 rembg 会自动下载 u2net 模型（~176MB）。
+
+### 代码结构
+
+```
+pipeline/
+  config.py        API key 从环境变量读；共享配置
+  generate.py      ① 视角规整 + ④ 逐帧生成（调图像 API）
+  skeleton_gen.py  ③ 走路骨架序列生成
+  matte.py         ⑤ rembg 抠图去背 + 去脚下阴影
+  align.py         ⑥ 逐帧对齐（脚底/躯干锚点）
+  pack.py          ⑦ sprite sheet + JSON + plist + GIF
+run.py             主流程（串起 ①→⑦）
+skeleton/          架构空骨架（模块划分 + 接口契约，供架构评审）
+```
+
+---
+
 ## 技术栈 · Stack（当前验证版）
 
 | 环节 | 用什么 |

@@ -1,0 +1,6 @@
+# Windup 管线依赖
+Pillow>=10.0          # 对齐 / 打包 / GIF（纯 CV，必需）
+rembg>=2.0            # ⑤ 抠图去背（AI 主体分割）
+onnxruntime>=1.16     # rembg 运行时
+# 生成步骤只用标准库 urllib 调 API，无需额外 SDK
+# 首次跑 rembg 会自动下载 u2net 模型（~176MB）
