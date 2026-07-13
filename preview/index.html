@@ -1,0 +1,27 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Windup · Lirael 预览</title>
+<style>body{margin:0;background:#2b2d3a;font-family:-apple-system,sans-serif;color:#eee;text-align:center}
+h2{padding:18px 0 6px}.sub{color:#9aa;font-size:14px;margin-bottom:14px}
+#game{display:inline-block;border-radius:10px;overflow:hidden;box-shadow:0 6px 30px rgba(0,0,0,.4)}
+.bar{margin-top:14px}.bar button{background:#4a6cf7;color:#fff;border:0;padding:8px 16px;margin:0 4px;border-radius:6px;font-size:14px;cursor:pointer}
+#status{margin-top:12px;font-size:13px}.note{color:#889;font-size:12px;margin-top:6px}
+img.gif{margin-top:10px;width:256px;image-rendering:pixelated;background:#222;border-radius:8px}</style></head>
+<body><h2>Windup · Lirael（像素·伪侧面·长裙德鲁伊）走路预览</h2>
+<div class="sub">换全新角色跑通同一条工作流 · 4 帧 · rembg抠图 · 对齐</div>
+<div id="game"></div>
+<div class="bar"><button onclick="setFps(4)">慢</button><button onclick="setFps(8)">正常</button><button onclick="setFps(12)">快</button><button onclick="toggleBg()">切换背景</button></div>
+<div id="status">加载中…</div>
+<div class="note">左：游戏运行时(Phaser) · 下：GIF（放大看像素）</div>
+<div><img class="gif" src="../GIF_Lirael_walk.gif?v=1"></div>
+<script src="phaser.min.js"></script>
+<script>
+const S=(m,c)=>{const e=document.getElementById('status');e.textContent=m;e.style.color=c||'#8f8'};
+let hero,cur=8,bgi=0,scene;const bgs=[0x3a5a40,0x1d2b53,0x7a5230,0x2b2d3a];
+function preload(){this.load.on('loaderror',f=>S('❌ 加载失败:'+f.key,'#f88'));this.load.spritesheet('w','lirael_sheet.png',{frameWidth:256,frameHeight:256});}
+function create(){scene=this;this.anims.create({key:'w',frames:this.anims.generateFrameNumbers('w',{start:0,end:3}),frameRate:cur,repeat:-1});
+this.add.rectangle(320,300,640,4,0xffffff,0.25);hero=this.add.sprite(120,215,'w').setScale(0.85);hero.play('w');hero.dir=1;S('✅ 已加载，Lirael 行走中','#8f8');}
+function update(){if(!hero)return;hero.x+=hero.dir*1.1;if(hero.x>560){hero.dir=-1;hero.setFlipX(true);}if(hero.x<80){hero.dir=1;hero.setFlipX(false);}}
+function setFps(f){cur=f;if(scene){scene.anims.remove('w');scene.anims.create({key:'w',frames:scene.anims.generateFrameNumbers('w',{start:0,end:3}),frameRate:f,repeat:-1});hero.play('w');}}
+function toggleBg(){bgi=(bgi+1)%bgs.length;if(scene)scene.cameras.main.setBackgroundColor(bgs[bgi]);}
+const config={type:Phaser.AUTO,width:640,height:360,parent:'game',backgroundColor:bgs[0],scene:{preload,create,update}};
+new Phaser.Game(config);
+</script></body></html>
