@@ -67,17 +67,50 @@ python run.py --ref path/to/character.png --name mychar \
 - **抠图/对齐/打包**是本地纯 CV，无需联网、无需 key；
 - 首次跑 rembg 会自动下载 u2net 模型（~176MB）。
 
+### 一套代码，任意角色（不是每个角色写一套代码）
+
+换角色 = 换参数，不改代码。每个角色 = **一张参考图 + 一个自动生成的角色卡（`card.json`）**：
+
+```bash
+python run.py --ref anyone.png --name whoever --actions idle,walk,attack
+```
+
+- **角色卡（`character.py`）** 是一致性主键，固化身份描述 + 基准帧 + 版本；
+- **描述自动生成（`describe.py`）**：视觉模型看图自动填角色卡，换角色连描述都不用手写；
+- **溯源（`provenance.py`）** 记录每次生成的 prompt / 路线 / 次数 / 成本 / 耗时 → 可复现、可核算成本、AIGC 合规标识。
+  （注：图像生成有随机性，**流程与参数可复现，非像素级一致** —— 行业常态。）
+
+### 核心卖点：单帧重生成
+
+坏哪帧只重生成那一帧，其余帧不动 —— 逐帧路线相对"视频转帧 / 3D 渲帧"（帧耦合、改一帧动全身）的关键优势：
+
+```bash
+python run.py --regen lirael walk 3      # 只重生成 walk 第 3 帧
+```
+
+### 自动质检（差异化）
+
+- **对齐漂移**（纯 CV，免费）：跨帧脚底线/躯干中心方差，自动标出漂移帧；
+- **一致性**（`--qa-vlm`）：视觉模型逐帧对比基准帧，判"是否同一角色"并列出漂移细节（如"宝珠颜色从蓝漂到粉"）。
+- 不合格帧 → 建议 `--regen` 单帧重生成。
+
 ### 代码结构
 
 ```
 pipeline/
-  config.py        API key 从环境变量读；共享配置
-  generate.py      ① 视角规整 + ④ 逐帧生成（调图像 API）
-  skeleton_gen.py  ③ 走路骨架序列生成
-  matte.py         ⑤ rembg 抠图去背 + 去脚下阴影
+  config.py        环境变量读 API key；模型配置
+  character.py     角色卡（一致性主键 + 资产库/版本）
+  actions.py       动作清单（idle/walk/attack/jump + 自定义）
+  describe.py      自动看图生成角色描述
+  generate.py      ① 视角规整 + ④ 逐帧生成
+  skeleton_gen.py  ③ 走路骨架序列
+  matte.py         ⑤ rembg 抠图 + 去脚下阴影
   align.py         ⑥ 逐帧对齐（脚底/躯干锚点）
-  pack.py          ⑦ sprite sheet + JSON + plist + GIF
-run.py             主流程（串起 ①→⑦）
+  qa.py            自动质检（对齐漂移 + VLM 一致性）
+  pack.py          ⑦ sprite sheet + JSON + plist + Godot .tres + 尺寸档 + GIF
+  provenance.py    生成溯源 + 成本核算
+  regenerate.py    单帧重生成
+run.py             主流程（生成 / 单帧重生成）
 skeleton/          架构空骨架（模块划分 + 接口契约，供架构评审）
 ```
 

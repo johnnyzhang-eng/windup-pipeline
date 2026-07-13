@@ -9,6 +9,7 @@ import os
 API_KEY = os.environ.get("SUFY_KEY", "")
 API_BASE = os.environ.get("SUFY_BASE", "https://openai.sufy.com/v1")
 IMAGE_MODEL = os.environ.get("SUFY_IMAGE_MODEL", "gemini-2.5-flash-image")
+VLM_MODEL = os.environ.get("SUFY_VLM_MODEL", "gemini-2.5-flash")   # 质检/描述用视觉模型（实测稳定）
 
 # 生成时统一的背景/风格约束（避开角色主色 → 用品红；无阴影便于抠图）
 BG_MAGENTA = "SOLID MAGENTA background #FF00FF"

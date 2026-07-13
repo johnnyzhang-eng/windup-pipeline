@@ -1,80 +1,119 @@
 #!/usr/bin/env python3
-"""Windup 管线主流程：一张角色参考图 → 走路动作包（GIF + sprite sheet + 元数据）。
+"""Windup 管线主流程 —— 一套代码，任意角色。
 
-用法：
+换角色 = 换参数（不改代码）。每个角色 = 一张参考图 + 一个自动生成的角色卡。
+
     export SUFY_KEY=你的图像API_key
-    python run.py --ref path/to/character.png --name lirael \
-        --desc "pixel-art druid: red hair, antler crown, green hooded cloak, staff with blue orb" \
-        --mode desc            # desc=动作描述驱动(长裙/复杂角色)；skeleton=骨架驱动(露腿角色)
 
-产出：characters/<name>/ 下 01_base / 02_walk_raw / 03_walk_cutout / 04_output。
+    # 全自动（连描述都不用手写，视觉模型自动看图生成角色卡）：
+    python run.py --ref character.png --name lirael --actions idle,walk,attack
 
-注：生成步骤需联网 + 有效 SUFY_KEY；抠图/对齐/打包为本地纯 CV，无需联网。
+    # 想手写描述也行：
+    python run.py --ref character.png --name lirael --desc "pixel druid, green cloak, staff" --actions walk
+
+    # 单帧重生成（核心卖点：坏哪帧只重那帧）：
+    python run.py --regen lirael walk 3
+
+产出：characters/<name>/  card.json · provenance.jsonl · 各动作 raw/cutout · 04_output(sheet/json/plist/tres/gif)
+可复现性：角色卡固定身份 + provenance 记录每次生成的 prompt/成本/时间（图像生成有随机性，
+流程与参数可复现，非像素级一致 —— 行业常态）。
 """
-import argparse, os
-from pipeline import config, generate, skeleton_gen, matte, align, pack
+import argparse, os, time
+from pipeline import (config, character, actions, describe, generate,
+                      matte, align, pack, provenance, qa, regenerate)
 
-# 走路循环 4 个关键相位的动作描述（desc 模式用）
-WALK_POSES_DESC = [
-    ("contact",  "mid-stride: one foot stepping forward, weight shifting forward, arms/props swinging naturally"),
-    ("passing",  "legs together under the body, body at highest point"),
-    ("contact2", "opposite foot stepping forward, mirror of the first stride"),
-    ("passing2", "legs together again, returning toward the start of the loop"),
-]
+
+def build_actions(spec):
+    """'idle,walk,attack' -> [Action]"""
+    return [actions.get(n.strip()) for n in spec.split(",") if n.strip()]
+
+
+def gen_action(card, act, outroot, use_vlm_qa=False):
+    root = card.dir(outroot)
+    d_raw = os.path.join(root, f"02_{act.name}_raw")
+    d_cut = os.path.join(root, f"03_{act.name}_cutout")
+    d_out = os.path.join(root, "04_output")
+    for d in (d_raw, d_cut, d_out):
+        os.makedirs(d, exist_ok=True)
+
+    cut_paths = []
+    for i, pose in enumerate(act.poses):
+        raw = os.path.join(d_raw, f"{act.name}_{i:02d}.png")
+        print(f"  ④ 生成 {act.name}/{i} ...")
+        t = time.time()
+        if not generate.gen_frame(card.base_frame, card.desc, pose, raw):
+            print(f"    ✗ 帧 {i} 生成失败，跳过"); continue
+        provenance.record(card.name, act.name, i, pose, config.IMAGE_MODEL,
+                          elapsed_s=time.time()-t, outroot=outroot)
+        cut = os.path.join(d_cut, f"{act.name}_{i:02d}.png")
+        matte.cutout(raw, cut); cut_paths.append(cut)
+
+    frames = align.align_frames(cut_paths)                       # ⑥ 对齐
+    base = os.path.join(d_out, act.name)                         # ⑦ 打包
+    pack.sprite_sheet(frames, base + "_sheet.png")
+    pack.write_json(len(frames), config.CELL, base + "_sheet.json", f"{act.name}_sheet.png")
+    pack.write_plist(len(frames), config.CELL, base + "_sheet.plist", f"{act.name}_sheet.png")
+    pack.write_godot_tres(len(frames), config.CELL, base + "_sheet.tres", f"{act.name}_sheet.png")
+    pack.size_tiers(frames, os.path.join(d_out, "tiers"), act.name)
+    pack.gif(frames, base + ".gif", duration=int(1000/act.fps))
+
+    report = qa.run_qa(card.base_frame, cut_paths, use_vlm=use_vlm_qa)   # 质检
+    return report
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ref", required=True, help="角色参考图路径")
-    ap.add_argument("--name", required=True, help="角色名（输出文件夹名）")
-    ap.add_argument("--desc", required=True, help="角色身份描述（英文，喂给模型锁一致性）")
-    ap.add_argument("--mode", choices=["desc", "skeleton"], default="desc")
+    ap.add_argument("--ref", help="角色参考图")
+    ap.add_argument("--name", help="角色名（输出文件夹）")
+    ap.add_argument("--desc", default="", help="角色描述（留空则自动看图生成）")
+    ap.add_argument("--actions", default="walk", help="逗号分隔，如 idle,walk,attack")
+    ap.add_argument("--qa-vlm", action="store_true", help="开启视觉模型一致性质检（花 API）")
     ap.add_argument("--outroot", default="characters")
+    ap.add_argument("--regen", nargs=3, metavar=("NAME", "ACTION", "IDX"),
+                    help="单帧重生成：--regen lirael walk 3")
     args = ap.parse_args()
 
-    root = os.path.join(args.outroot, args.name)
-    d_base = os.path.join(root, "01_base")
-    d_raw = os.path.join(root, "02_walk_raw")
-    d_cut = os.path.join(root, "03_walk_cutout")
-    d_out = os.path.join(root, "04_output")
-    for d in (d_base, d_raw, d_cut, d_out):
-        os.makedirs(d, exist_ok=True)
+    if args.regen:
+        name, action, idx = args.regen
+        regenerate.regenerate_frame(name, action, int(idx), args.outroot)
+        return
 
-    # ① 视角规整 → 伪侧面基准帧
+    if not (args.ref and args.name):
+        ap.error("生成需要 --ref 和 --name")
+
+    # ① 视角规整前：建角色卡（描述自动或手写）
+    if args.desc:
+        info = {"desc": args.desc, "palette": "", "view": "unknown"}
+    else:
+        print("① 自动看图生成角色描述 ...")
+        info = describe.describe_character(args.ref)
+        print(f"   描述：{info['desc']}")
+    card = character.CharacterCard(name=args.name, desc=info["desc"],
+                                   palette=info.get("palette", ""),
+                                   ref_image=args.ref, view=info.get("view", ""))
+
     print("① 视角规整 → 伪侧面基准帧 ...")
-    base = os.path.join(d_base, "chosen_base.png")
-    if not generate.to_side_view(args.ref, args.desc, base):
+    base = os.path.join(card.dir(args.outroot), "01_base"); os.makedirs(base, exist_ok=True)
+    card.base_frame = os.path.join(base, "chosen_base.png")
+    if not generate.to_side_view(args.ref, card.desc, card.base_frame):
         raise SystemExit("视角规整失败（检查 SUFY_KEY / 网络）")
+    card.save(args.outroot)
 
-    # ③④ 逐帧生成走路
-    skels = skeleton_gen.make_walk_skeletons(os.path.join(root, "_skeletons")) \
-        if args.mode == "skeleton" else [None] * len(WALK_POSES_DESC)
-    raw_paths = []
-    for (tag, pose), sk in zip(WALK_POSES_DESC, skels):
-        out = os.path.join(d_raw, f"walk_{tag}.png")
-        print(f"④ 生成 walk/{tag} ...")
-        if generate.gen_frame(base, args.desc, pose, out, skeleton_path=sk):
-            raw_paths.append(out)
+    reports = {}
+    for act in build_actions(args.actions):
+        print(f"▶ 动作 {act.name}（{act.n_frames} 帧）")
+        reports[act.name] = gen_action(card, act, args.outroot, use_vlm_qa=args.qa_vlm)
 
-    # ⑤ 抠图
-    cut_paths = []
-    for p in raw_paths:
-        out = os.path.join(d_cut, os.path.basename(p))
-        print(f"⑤ 抠图 {os.path.basename(p)} ...")
-        matte.cutout(p, out); cut_paths.append(out)
-
-    # ⑥ 对齐
-    print("⑥ 逐帧对齐 ...")
-    frames = align.align_frames(cut_paths)
-
-    # ⑦ 打包
-    print("⑦ 打包 sprite sheet / JSON / plist / GIF ...")
-    n = len(frames)
-    pack.sprite_sheet(frames, os.path.join(d_out, "sprite_sheet.png"))
-    pack.write_json(n, config.CELL, os.path.join(d_out, "sprite_sheet.json"))
-    pack.write_plist(n, config.CELL, os.path.join(d_out, "sprite_sheet.plist"))
-    pack.gif(frames, os.path.join(d_out, "walk.gif"))
-    print(f"完成 ✅  产出在 {d_out}/  （{n} 帧）")
+    # 汇总
+    cost = provenance.summary(card.name, args.outroot)
+    print(f"\n完成 ✅  {card.dir(args.outroot)}/")
+    print(f"   动作：{', '.join(reports)}")
+    print(f"   生成 {cost['runs']} 次 · 估算成本 ¥{cost['cost_yuan_est']} · 耗时 {cost['total_elapsed_s']}s")
+    for a, r in reports.items():
+        al = r["alignment"]
+        print(f"   [{a}] 对齐漂移帧：{al.get('drift_frames', [])}"
+              + (f" · 一致性不合格帧：{r.get('consistency_fail', [])}" if 'consistency' in r else ""))
+    print("   漂移/不合格帧可用：python run.py --regen <name> <action> <idx> 单帧重生成")
 
 
 if __name__ == "__main__":

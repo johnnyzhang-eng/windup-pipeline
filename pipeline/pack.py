@@ -44,6 +44,43 @@ def write_plist(n, cell, out_plist, sheet_name="sprite_sheet.png"):
     open(out_plist, "w").write("\n".join(p))
 
 
+def write_godot_tres(n, cell, out_tres, sheet_name="sprite_sheet.png"):
+    """Godot SpriteFrames 资源（.tres），AnimatedSprite2D 可直接用。"""
+    lines = ['[gd_resource type="SpriteFrames" load_steps=%d format=3]' % (n + 2), ""]
+    lines.append('[ext_resource type="Texture2D" path="res://%s" id="1"]' % sheet_name)
+    lines.append("")
+    atlas_ids = []
+    for i in range(n):
+        aid = f"AtlasTexture_{i}"
+        atlas_ids.append(aid)
+        lines += [f'[sub_resource type="AtlasTexture" id="{aid}"]',
+                  'atlas = ExtResource("1")',
+                  f'region = Rect2({i*cell}, 0, {cell}, {cell})', ""]
+    lines.append("[resource]")
+    frame_list = ", ".join(f'{{"duration": 1.0, "texture": SubResource("{a}")}}' for a in atlas_ids)
+    lines.append('animations = [{')
+    lines.append('"frames": [%s],' % frame_list)
+    lines.append('"loop": true, "name": &"walk", "speed": 10.0')
+    lines.append('}]')
+    open(out_tres, "w").write("\n".join(lines))
+
+
+def size_tiers(frames, out_dir, base_name, tiers=(256, 128)):
+    """输出多个尺寸档的 sprite sheet（贴包体预算，如小游戏 4MB）。"""
+    import os
+    from PIL import Image
+    os.makedirs(out_dir, exist_ok=True)
+    paths = []
+    for t in tiers:
+        scaled = [f.resize((t, t), Image.LANCZOS) for f in frames]
+        p = os.path.join(out_dir, f"{base_name}_{t}px.png")
+        sheet = Image.new("RGBA", (t * len(scaled), t), (0, 0, 0, 0))
+        for i, f in enumerate(scaled):
+            sheet.alpha_composite(f, (i * t, 0))
+        sheet.save(p); paths.append(p)
+    return paths
+
+
 def gif(frames, out_gif, duration=120, bg=(40, 40, 55, 255)):
     """合成预览 GIF（GIF 不支持 alpha 动画，铺底色）。"""
     def ondark(im):
