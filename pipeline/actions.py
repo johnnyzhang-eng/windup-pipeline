@@ -31,14 +31,22 @@ STANDARD = {
         "settling back toward neutral to loop",
     ]),
     "walk": Action("walk", 10, "linear", [
-        "mid-stride: one foot stepping forward, weight shifting forward, cloak/props trailing back",
-        "passing: rear leg swings under body, body rising",
-        "high passing point: supporting leg vertical, other lifted",
-        "reaching forward: front foot about to plant",
-        "opposite contact: other foot forward (mirror of frame 1)",
-        "passing: rear leg swings under, body rising",
-        "high passing point on the other side",
-        "reaching forward, returning toward the loop start",
+        "WALK CYCLE frame 1/8, CONTACT pose: RIGHT leg extended forward with heel touching ground, "
+        "LEFT leg extended behind pushing off, legs in widest stride split, arms swinging (left arm forward), "
+        "torso upright and calm, walking to the right — NOT running, NOT posing, NOT reaching",
+        "WALK CYCLE frame 2/8, DOWN pose: right foot flat on ground taking weight, body at lowest point, "
+        "left leg starting to lift behind, legs closer than frame 1, natural relaxed walk",
+        "WALK CYCLE frame 3/8, PASSING pose: left leg swinging forward passing directly under the body, "
+        "right leg vertical supporting all weight, legs close together, body at neutral height",
+        "WALK CYCLE frame 4/8, UP pose: left leg reaching forward, body at highest point rising on right toe, "
+        "about to plant left foot, mild stride opening",
+        "WALK CYCLE frame 5/8, opposite CONTACT: LEFT leg extended forward heel down, RIGHT leg behind pushing off, "
+        "widest stride (mirror of frame 1), right arm forward, calm walk to the right",
+        "WALK CYCLE frame 6/8, DOWN pose: left foot flat taking weight, body lowest, right leg lifting behind, "
+        "legs closing",
+        "WALK CYCLE frame 7/8, PASSING pose: right leg swinging forward under the body, left leg vertical supporting, "
+        "legs close together, neutral height",
+        "WALK CYCLE frame 8/8, UP pose: right leg reaching forward returning toward frame 1, body rising on left toe",
     ]),
     "attack": Action("attack", 12, "none", [
         "wind-up: weapon/staff drawn back, weight loaded on back foot",

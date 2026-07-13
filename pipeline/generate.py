@@ -3,13 +3,13 @@
 - 参考图 + 文字约束 → 生成图（route A：保"单帧可独立重画"）。
 - key 从环境变量读（见 config.py）。
 """
-import json, base64, re, time, urllib.request, urllib.error
+import base64, re
 from . import config
 
 
-def _call(text, ref_paths, out_path, retries=3, timeout=200):
-    """底层调用：text + 若干参考图 → 生成一张图存到 out_path。返回 bool。"""
-    config.require_key()
+def _call(text, ref_paths, out_path, timeout=200):
+    """底层调用：text + 若干参考图 → 生成一张图存到 out_path。返回 bool。
+    网络重试由 config.post_json 统一处理；这里再对'调用成功但没返回有效图'多试几轮。"""
     content = [{"type": "text", "text": text}]
     for p in ref_paths:
         b = base64.b64encode(open(p, "rb").read()).decode()
@@ -17,25 +17,17 @@ def _call(text, ref_paths, out_path, retries=3, timeout=200):
                          "image_url": {"url": "data:image/png;base64," + b}})
     body = {"model": config.IMAGE_MODEL,
             "messages": [{"role": "user", "content": content}]}
-    for attempt in range(retries):
+    for attempt in range(3):                      # 空图重试（内含网络重试）
         try:
-            req = urllib.request.Request(
-                config.API_BASE + "/chat/completions",
-                data=json.dumps(body).encode(),
-                headers={"Authorization": f"Bearer {config.API_KEY}",
-                         "Content-Type": "application/json"})
-            with urllib.request.urlopen(req, timeout=timeout) as r:
-                res = json.load(r)
-            m = re.search(r'data:image/[^;]+;base64,([A-Za-z0-9+/=]{100,})',
-                          json.dumps(res))
-            if m:
-                data = base64.b64decode(m.group(1))
-                if len(data) > 5000:
-                    open(out_path, "wb").write(data)
-                    return True
+            res = config.post_json("/chat/completions", body, timeout=timeout)
         except Exception as e:
-            print(f"  retry {attempt}: {str(e)[:80]}")
-            time.sleep(2)
+            print(f"    · 生成失败（网络）：{str(e)[:70]}"); return False
+        m = re.search(r'data:image/[^;]+;base64,([A-Za-z0-9+/=]{100,})', __import__("json").dumps(res))
+        if m:
+            data = base64.b64decode(m.group(1))
+            if len(data) > 5000:
+                open(out_path, "wb").write(data); return True
+        print(f"    · 返回无有效图，重试 {attempt+1}/3")
     return False
 
 

@@ -20,7 +20,7 @@
 """
 import argparse, os, time
 from pipeline import (config, character, actions, describe, generate,
-                      matte, align, pack, provenance, qa, regenerate)
+                      matte, align, pack, provenance, qa, regenerate, autofix)
 
 
 def build_actions(spec):
@@ -36,28 +36,21 @@ def gen_action(card, act, outroot, use_vlm_qa=False):
     for d in (d_raw, d_cut, d_out):
         os.makedirs(d, exist_ok=True)
 
-    cut_paths = []
     for i, pose in enumerate(act.poses):
         raw = os.path.join(d_raw, f"{act.name}_{i:02d}.png")
         print(f"  ④ 生成 {act.name}/{i} ...")
         t = time.time()
         if not generate.gen_frame(card.base_frame, card.desc, pose, raw):
-            print(f"    ✗ 帧 {i} 生成失败，跳过"); continue
+            print(f"    ✗ 帧 {i} 首次失败，autofix 阶段会再补"); continue
         provenance.record(card.name, act.name, i, pose, config.IMAGE_MODEL,
                           elapsed_s=time.time()-t, outroot=outroot)
-        cut = os.path.join(d_cut, f"{act.name}_{i:02d}.png")
-        matte.cutout(raw, cut); cut_paths.append(cut)
+        matte.cutout(raw, os.path.join(d_cut, f"{act.name}_{i:02d}.png"))
 
-    frames = align.align_frames(cut_paths)                       # ⑥ 对齐
-    base = os.path.join(d_out, act.name)                         # ⑦ 打包
-    pack.sprite_sheet(frames, base + "_sheet.png")
-    pack.write_json(len(frames), config.CELL, base + "_sheet.json", f"{act.name}_sheet.png")
-    pack.write_plist(len(frames), config.CELL, base + "_sheet.plist", f"{act.name}_sheet.png")
-    pack.write_godot_tres(len(frames), config.CELL, base + "_sheet.tres", f"{act.name}_sheet.png")
+    # ⑥⑦ + 自动修残次帧（质检→对被标记帧单帧重生成，最多 2 轮）+ 打包 + 尺寸档
+    report = autofix.autofix_action(card, act, outroot, max_rounds=2, use_vlm=use_vlm_qa)
+    frames = align.align_frames(
+        sorted(os.path.join(d_cut, f) for f in os.listdir(d_cut) if f.endswith(".png")))
     pack.size_tiers(frames, os.path.join(d_out, "tiers"), act.name)
-    pack.gif(frames, base + ".gif", duration=int(1000/act.fps))
-
-    report = qa.run_qa(card.base_frame, cut_paths, use_vlm=use_vlm_qa)   # 质检
     return report
 
 

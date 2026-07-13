@@ -3,13 +3,12 @@
 用视觉模型看参考图，生成一段"身份描述"填进角色卡。这是"一套代码、多角色"
 可扩展的关键：加一个角色 = 加一张图，描述自动来，不写代码、不手写 prompt。
 """
-import json, base64, re, urllib.request
+import json, base64, re
 from . import config
 
 
 def describe_character(ref_path, model=None):
     """看参考图 → 返回 {desc, palette, view} 供角色卡使用。"""
-    config.require_key()
     model = model or config.VLM_MODEL
     b = base64.b64encode(open(ref_path, "rb").read()).decode()
     prompt = (
@@ -23,12 +22,8 @@ def describe_character(ref_path, model=None):
         {"type": "text", "text": prompt},
         {"type": "image_url", "image_url": {"url": "data:image/png;base64," + b}},
     ]}]}
-    req = urllib.request.Request(config.API_BASE + "/chat/completions",
-        data=json.dumps(body).encode(),
-        headers={"Authorization": f"Bearer {config.API_KEY}", "Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=120) as r:
-        txt = r.read().decode()
-    content = json.loads(txt)["choices"][0]["message"]["content"]
+    res = config.post_json("/chat/completions", body)   # 带重试
+    content = res["choices"][0]["message"]["content"]
     m = re.search(r'\{.*\}', content, re.S)
     if m:
         return json.loads(m.group(0))

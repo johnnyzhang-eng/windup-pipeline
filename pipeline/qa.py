@@ -5,7 +5,7 @@
   B. 一致性（VLM，需 API）：把每帧和基准帧喂视觉模型，判"是否同一角色"。
 不合格帧 → 建议单帧重生成（regenerate）。
 """
-import json, base64, urllib.request
+import json, base64
 from PIL import Image
 from . import config, align
 
@@ -49,12 +49,9 @@ def vlm_consistency(base_path, frame_path, model=None):
         {"type": "image_url", "image_url": {"url": "data:image/png;base64," + b64(base_path)}},
         {"type": "image_url", "image_url": {"url": "data:image/png;base64," + b64(frame_path)}},
     ]}]}
-    req = urllib.request.Request(config.API_BASE + "/chat/completions",
-        data=json.dumps(body).encode(),
-        headers={"Authorization": f"Bearer {config.API_KEY}", "Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=120) as r:
-            txt = json.load(r)["choices"][0]["message"]["content"]
+        res = config.post_json("/chat/completions", body, timeout=120)   # 带重试
+        txt = res["choices"][0]["message"]["content"]
         import re
         m = re.search(r'\{.*\}', txt, re.S)
         if m:
