@@ -4,3 +4,9 @@ rembg>=2.0            # ⑤ 抠图去背（AI 主体分割）
 onnxruntime>=1.16     # rembg 运行时
 # 生成步骤只用标准库 urllib 调 API，无需额外 SDK
 # 首次跑 rembg 会自动下载 u2net 模型（~176MB）
+
+# --- 可选：QA 身份漂移层（pipeline.qa.dreamsim_drift，Refs #7）---
+# 重依赖，不进核心；用到时单独装。本机秒级、零 API。首次下 ckpt ~1.17G（走 HF 镜像）。
+# dreamsim>=0.2         # DreamSim 感知相似度（CLIP+DINO 集成）
+# torch>=2.2            # DreamSim 后端（Apple MPS 加速）
+# 缺失时 dreamsim_drift() 返回 {available: False}，不阻断几何/VLM 质检。
